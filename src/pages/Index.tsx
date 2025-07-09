@@ -5,13 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Sparkles, Copy, RefreshCw } from "lucide-react";
+import { Sparkles, Copy, RefreshCw, Key } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
   const [userQuestion, setUserQuestion] = useState("");
   const [generatedPrompt, setGeneratedPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKeyInput, setShowApiKeyInput] = useState(true);
   const { toast } = useToast();
 
   const generatePrompt = async () => {
@@ -24,103 +26,73 @@ const Index = () => {
       return;
     }
 
+    if (!apiKey.trim()) {
+      toast({
+        title: "API Key Required",
+        description: "Please enter your DeepSeek API key to generate prompts.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
     
-    // Simulate AI processing with a realistic delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Generate an enhanced prompt based on the user's question
-    const enhancedPrompt = generateEnhancedPrompt(userQuestion);
-    setGeneratedPrompt(enhancedPrompt);
-    setIsGenerating(false);
+    try {
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert prompt engineer. Your task is to take a user's simple question and transform it into a comprehensive, detailed prompt that will get better results from AI assistants.
 
-    toast({
-      title: "Prompt generated!",
-      description: "Your enhanced prompt is ready to use.",
-    });
-  };
+Guidelines for creating enhanced prompts:
+1. Analyze the user's question to understand the context and domain
+2. Add relevant role-playing instructions (e.g., "Act as an expert...")
+3. Structure the request with clear sections and bullet points
+4. Ask for specific deliverables and formats
+5. Include relevant considerations like best practices, examples, or step-by-step approaches
+6. Make the prompt actionable and comprehensive
 
-  const generateEnhancedPrompt = (question: string) => {
-    // Analyze the question and create a more detailed, structured prompt
-    const questionLower = question.toLowerCase();
-    
-    if (questionLower.includes("code") || questionLower.includes("programming") || questionLower.includes("develop")) {
-      return `Act as an expert software developer and technical advisor. 
+Return only the enhanced prompt, nothing else.`
+            },
+            {
+              role: 'user',
+              content: `Transform this question into a comprehensive prompt: "${userQuestion}"`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000,
+        }),
+      });
 
-Original question: "${question}"
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
 
-Please provide a comprehensive response that includes:
-1. A clear, step-by-step solution
-2. Best practices and potential pitfalls to avoid
-3. Code examples with explanations (if applicable)
-4. Alternative approaches or considerations
-5. Resources for further learning
-
-Format your response in a structured way with clear headings and examples. Prioritize clarity and practical applicability.`;
+      const data = await response.json();
+      const enhancedPrompt = data.choices[0]?.message?.content || "Failed to generate prompt";
+      
+      setGeneratedPrompt(enhancedPrompt);
+      toast({
+        title: "Prompt generated!",
+        description: "Your enhanced prompt is ready to use.",
+      });
+    } catch (error) {
+      console.error('Error generating prompt:', error);
+      toast({
+        title: "Error generating prompt",
+        description: "Please check your API key and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
     }
-    
-    if (questionLower.includes("write") || questionLower.includes("content") || questionLower.includes("blog")) {
-      return `Act as a professional content writer and communication expert.
-
-Original question: "${question}"
-
-Please help by providing:
-1. A detailed outline or structure
-2. Key points to cover
-3. Target audience considerations
-4. Tone and style recommendations
-5. SEO considerations (if applicable)
-6. Call-to-action suggestions
-
-Ensure the response is actionable and tailored to create engaging, high-quality content.`;
-    }
-    
-    if (questionLower.includes("design") || questionLower.includes("ui") || questionLower.includes("ux")) {
-      return `Act as a senior UX/UI designer and design strategist.
-
-Original question: "${question}"
-
-Please provide guidance including:
-1. Design principles to consider
-2. User experience best practices
-3. Visual hierarchy and layout suggestions
-4. Accessibility considerations
-5. Current design trends and patterns
-6. Tools and resources recommendations
-
-Focus on creating user-centered, accessible, and visually appealing solutions.`;
-    }
-    
-    if (questionLower.includes("business") || questionLower.includes("marketing") || questionLower.includes("strategy")) {
-      return `Act as a business consultant and strategic advisor with expertise in marketing and operations.
-
-Original question: "${question}"
-
-Please provide strategic insights including:
-1. Market analysis and opportunities
-2. Risk assessment and mitigation strategies
-3. Implementation roadmap
-4. Success metrics and KPIs
-5. Resource requirements
-6. Competitive considerations
-
-Deliver actionable recommendations based on current market trends and proven business practices.`;
-    }
-    
-    // Default enhanced prompt for general questions
-    return `Act as a knowledgeable expert in the relevant field for this question.
-
-Original question: "${question}"
-
-Please provide a comprehensive and helpful response that includes:
-1. A clear and direct answer to the main question
-2. Important context and background information
-3. Step-by-step guidance (if applicable)
-4. Potential challenges and how to overcome them
-5. Additional tips and best practices
-6. Relevant examples or case studies
-
-Structure your response clearly with headings and bullet points where appropriate. Prioritize practical, actionable advice that the user can implement immediately.`;
   };
 
   const copyToClipboard = () => {
@@ -136,6 +108,30 @@ Structure your response clearly with headings and bullet points where appropriat
     setGeneratedPrompt("");
   };
 
+  const saveApiKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem('deepseek_api_key', apiKey);
+      setShowApiKeyInput(false);
+      toast({
+        title: "API Key saved",
+        description: "Your API key has been saved locally.",
+      });
+    }
+  };
+
+  const loadApiKey = () => {
+    const savedKey = localStorage.getItem('deepseek_api_key');
+    if (savedKey) {
+      setApiKey(savedKey);
+      setShowApiKeyInput(false);
+    }
+  };
+
+  // Load API key on component mount
+  useState(() => {
+    loadApiKey();
+  });
+
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -146,16 +142,58 @@ Structure your response clearly with headings and bullet points where appropriat
             <h1 className="text-4xl font-bold">AI Prompt Generator</h1>
           </div>
           <p className="text-xl text-muted-foreground">
-            Transform your questions into powerful, detailed prompts for better AI responses
+            Transform your questions into powerful, detailed prompts using DeepSeek AI
           </p>
         </div>
+
+        {/* API Key Section */}
+        {showApiKeyInput && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5" />
+                DeepSeek API Key
+              </CardTitle>
+              <CardDescription>
+                Enter your DeepSeek API key to generate enhanced prompts. Get your API key from{" "}
+                <a href="https://platform.deepseek.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                  DeepSeek Platform
+                </a>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="apiKey">API Key</Label>
+                <Input
+                  id="apiKey"
+                  type="password"
+                  placeholder="sk-..."
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+              </div>
+              <Button onClick={saveApiKey} disabled={!apiKey.trim()}>
+                Save API Key
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {!showApiKeyInput && (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setShowApiKeyInput(true)}>
+              <Key className="h-4 w-4 mr-2" />
+              Change API Key
+            </Button>
+          </div>
+        )}
 
         {/* Input Section */}
         <Card>
           <CardHeader>
             <CardTitle>Your Question</CardTitle>
             <CardDescription>
-              Enter your question and I'll create an enhanced prompt to get you better results
+              Enter your question and DeepSeek AI will create an enhanced prompt to get you better results
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -170,11 +208,15 @@ Structure your response clearly with headings and bullet points where appropriat
               />
             </div>
             <div className="flex gap-2">
-              <Button onClick={generatePrompt} disabled={isGenerating} className="flex-1">
+              <Button 
+                onClick={generatePrompt} 
+                disabled={isGenerating || showApiKeyInput} 
+                className="flex-1"
+              >
                 {isGenerating ? (
                   <>
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Generating...
+                    Generating with DeepSeek...
                   </>
                 ) : (
                   <>
@@ -196,7 +238,7 @@ Structure your response clearly with headings and bullet points where appropriat
             <CardHeader>
               <CardTitle>Your Enhanced Prompt</CardTitle>
               <CardDescription>
-                Copy this prompt and use it with any AI assistant for better results
+                Generated by DeepSeek AI - Copy this prompt and use it with any AI assistant for better results
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -230,8 +272,8 @@ Structure your response clearly with headings and bullet points where appropriat
               <li>• Be specific about what you want to achieve</li>
               <li>• Include relevant context about your skill level or industry</li>
               <li>• Mention any constraints or requirements you have</li>
-              <li>• Ask for examples, step-by-step guides, or specific formats</li>
-              <li>• The more detailed your question, the better the enhanced prompt will be</li>
+              <li>• The more detailed your question, the better DeepSeek can enhance it</li>
+              <li>• Your API key is stored locally in your browser for convenience</li>
             </ul>
           </CardContent>
         </Card>
